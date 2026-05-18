@@ -1,6 +1,6 @@
 {
   "name": "agent-query-crawl",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Agent-oriented internet query, Exa search, and safe page crawling utilities.",
   "author": "respectmathias",
   "type": "module",
