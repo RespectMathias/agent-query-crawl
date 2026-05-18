@@ -1,4 +1,5 @@
 import { createExaSearch, extractUrlsFromText, type ExaSearchInput, type ExaSearchOptions, type FetchLike } from './exa-search';
+import { AgentQueryCrawlError } from './errors';
 import { DEFAULT_LIMITS } from './limits';
 import { createWebFetch, type WebFetchOptions, type WebFetchResult } from './web-fetch';
 import { sanitizeSearchQuery, type SafetyOptions } from './web-safety';
@@ -85,5 +86,10 @@ async function crawlUrls({
   signal?: AbortSignal;
 }): Promise<WebFetchResult[]> {
   const settled = await Promise.allSettled(urls.map((url) => webFetch.fetch({ url, timeoutMs, signal })));
+  // Re-throw abort instead of returning partial results to honor the signal contract.
+  // Promise.allSettled drops rejected promises, including those aborted by the caller.
+  if (signal?.aborted) {
+    throw new AgentQueryCrawlError('abort', 'The crawl request was aborted.', { cause: signal.reason });
+  }
   return settled.flatMap((item) => (item.status === 'fulfilled' ? [item.value] : []));
 }

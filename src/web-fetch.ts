@@ -104,7 +104,9 @@ export function createWebFetch(options: WebFetchOptions = {}) {
 export async function readLimitedResponseText(response: Response, maxBytes = DEFAULT_LIMITS.maxWebResponseBytes): Promise<string> {
   if (!response.body) {
     const text = await response.text();
-    if (text.length > maxBytes) throw new AgentQueryCrawlError('unsupported', `Response too large (exceeds ${maxBytes} byte limit).`);
+    // String.length counts code units, not bytes. Multibyte characters (e.g., UTF-8)
+    // can exceed the byte limit while passing a character-length check.
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw new AgentQueryCrawlError('unsupported', `Response too large (exceeds ${maxBytes} byte limit).`);
     return text;
   }
 

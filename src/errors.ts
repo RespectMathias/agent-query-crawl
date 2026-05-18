@@ -18,19 +18,37 @@ export class AgentQueryCrawlError extends Error {
   }
 }
 
-/**
- * Convert failed HTTP responses into package errors.
- *
- * Attempts to read the response body for a more descriptive error message,
- * falling back to the provided message if reading fails or the body is empty.
- * The message is truncated to 500 characters to prevent large error payloads.
- */
+const ERROR_MESSAGE_LIMIT = 500;
+
+async function readLimitedText(response: Response, limit: number): Promise<string> {
+  // Read incrementally to avoid buffering large upstream error bodies in memory.
+  // Cancels the stream reader in finally to release resources even when truncated.
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = '';
+
+  try {
+    while (bytesRead < limit) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value.slice(0, limit - bytesRead), { stream: true });
+      text += chunk;
+      bytesRead += value.byteLength;
+    }
+    return text;
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
 export async function responseToError(response: Response, fallback = 'Upstream request failed.'): Promise<AgentQueryCrawlError> {
   let message = fallback;
   try {
-    const text = await response.clone().text();
+    const text = await readLimitedText(response, ERROR_MESSAGE_LIMIT);
     if (text.trim()) {
-      message = text.trim().slice(0, 500);
+      message = text.trim();
     }
   } catch {
   }

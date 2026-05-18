@@ -1,4 +1,5 @@
 import { EXA_MCP_URL } from './exa-search';
+import { linkAbortSignal } from './abort';
 import { DEFAULT_LIMITS } from './limits';
 import { readLimitedResponseText, WEB_FETCH_HEADERS, htmlToText } from './web-fetch';
 import { sanitizeSearchQuery, sanitizeUntrustedWebText, validateSafeHttpsUrl, type SafetyOptions } from './web-safety';
@@ -7,6 +8,7 @@ import type { FetchLike } from './exa-search';
 export type AgentQueryCrawlProxyOptions = SafetyOptions & {
   fetch?: FetchLike;
   exaEndpoint?: string;
+  exaTimeoutMs?: number;
   webFetchTimeoutMs?: number;
   maxWebResponseBytes?: number;
 };
@@ -54,14 +56,31 @@ export function createAgentQueryCrawlProxy(options: AgentQueryCrawlProxyOptions 
         return noStoreText('Missing or invalid query', 400);
       }
 
-      const upstream = await fetch(options.exaEndpoint ?? EXA_MCP_URL, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json, text/event-stream',
-          'Content-Type': 'application/json',
-        },
-        body,
-      });
+      // Link caller abort signal and enforce timeout to prevent hung upstream calls
+      // from keeping proxy connections open indefinitely.
+      const linked = linkAbortSignal(request.signal);
+      const timeoutMs = options.exaTimeoutMs ?? DEFAULT_LIMITS.exaSearchTimeoutMs;
+      const timeoutHandle = setTimeout(() => linked.controller.abort(), timeoutMs);
+
+      let upstream: Response;
+      try {
+        upstream = await fetch(options.exaEndpoint ?? EXA_MCP_URL, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json, text/event-stream',
+            'Content-Type': 'application/json',
+          },
+          body,
+          signal: linked.signal,
+        });
+      } catch (error) {
+        clearTimeout(timeoutHandle);
+        linked.cleanup();
+        return noStoreText(error instanceof Error && error.name === 'AbortError' ? 'Upstream request timed out' : 'Upstream request failed', error instanceof Error && error.name === 'AbortError' ? 504 : 502);
+      }
+
+      clearTimeout(timeoutHandle);
+      linked.cleanup();
 
       return new Response(await upstream.text(), {
         status: upstream.status,
