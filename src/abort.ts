@@ -1,4 +1,14 @@
-/** Link a caller abort signal to an internal abort controller. */
+/**
+ * Link a caller abort signal to an internal abort controller.
+ *
+ * Creates an internal AbortController that can be aborted either by the
+ * caller or by timeout. When the caller signals abort, the internal
+ * controller is also aborted, ensuring consistent cancellation behavior.
+ * The cleanup function must be called to remove the event listener when
+ * the operation completes.
+ *
+ * @returns An object with the internal controller, its signal, and a cleanup function.
+ */
 export function linkAbortSignal(signal?: AbortSignal): { controller: AbortController; signal: AbortSignal; cleanup(): void } {
   const controller = new AbortController();
 

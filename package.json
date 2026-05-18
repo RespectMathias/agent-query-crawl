@@ -49,7 +49,7 @@
     "node": ">=18"
   },
   "publishConfig": {
-    "provenance": true
+    "provenance": false
   },
   "keywords": [
     "agent",

@@ -11,12 +11,21 @@ export type AgentQueryCrawlProxyOptions = SafetyOptions & {
   maxWebResponseBytes?: number;
 };
 
+/**
+ * Resolve the fetch implementation, preferring a custom one over the global.
+ */
 function pickFetch(customFetch?: FetchLike): FetchLike {
   if (typeof customFetch === 'function') return customFetch;
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
   throw new Error('A fetch implementation is required.');
 }
 
+/**
+ * Create a Response that explicitly disables caching.
+ *
+ * Used for proxy responses to prevent intermediate caches from storing
+ * potentially sensitive or dynamic content.
+ */
 function noStoreText(text: string, status: number): Response {
   return new Response(text, {
     status,
@@ -27,7 +36,14 @@ function noStoreText(text: string, status: number): Response {
   });
 }
 
-/** Create framework-agnostic proxy handlers for Exa MCP and safe web fetches. */
+/**
+ * Create framework-agnostic proxy handlers for Exa MCP and safe web fetches.
+ *
+ * Returns an object with two handlers: `exaMcp` proxies search requests to
+ * Exa MCP, and `webFetch` proxies arbitrary URLs with safety validation.
+ * Both handlers enforce the same safety constraints as the direct clients
+ * but are suitable for server-side proxy setups (e.g., Next.js API routes).
+ */
 export function createAgentQueryCrawlProxy(options: AgentQueryCrawlProxyOptions = {}) {
   const fetch = pickFetch(options.fetch);
 
@@ -98,7 +114,13 @@ export function createAgentQueryCrawlProxy(options: AgentQueryCrawlProxyOptions 
   };
 }
 
-/** Validate that an incoming Exa MCP proxy body is a web_search_exa request with a safe query. */
+/**
+ * Validate that an incoming Exa MCP proxy body is a web_search_exa request with a safe query.
+ *
+ * Checks that the JSON-RPC payload targets only the web_search_exa tool and
+ * that the query passes sanitizeSearchQuery validation. This prevents proxy
+ * abuse by ensuring requests cannot inject arbitrary methods or payloads.
+ */
 export function isSafeExaRequest(body: string, options: SafetyOptions = {}): boolean {
   try {
     const payload = JSON.parse(body) as {

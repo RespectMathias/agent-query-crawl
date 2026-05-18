@@ -29,6 +29,12 @@ export type WebFetchOptions = SafetyOptions & {
   maxTextCharacters?: number;
 };
 
+/**
+ * Resolve the fetch implementation, preferring a custom one over the global.
+ *
+ * We bind globalThis.fetch to preserve the correct `this` context, which matters
+ * when the global fetch is a property rather than a standalone function.
+ */
 function pickFetch(customFetch?: FetchLike): FetchLike {
   if (typeof customFetch === 'function') return customFetch;
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
@@ -86,7 +92,15 @@ export function createWebFetch(options: WebFetchOptions = {}) {
   };
 }
 
-/** Read a response body while enforcing a byte limit. */
+/**
+ * Read a response body while enforcing a byte limit.
+ *
+ * Uses a ReadableStream to consume the body incrementally, aborting early
+ * if the response exceeds the byte limit. Falls back to reading the full
+ * body into memory when the response lacks a stream (non-streaming fetch).
+ * Releasing the reader lock only when not canceled ensures the underlying
+ * resources are properly freed in both success and failure paths.
+ */
 export async function readLimitedResponseText(response: Response, maxBytes = DEFAULT_LIMITS.maxWebResponseBytes): Promise<string> {
   if (!response.body) {
     const text = await response.text();

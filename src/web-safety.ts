@@ -1,5 +1,12 @@
 import { AgentQueryCrawlError } from './errors';
 
+/**
+ * Patterns that trigger rejection of a search query.
+ *
+ * These patterns detect prompt injection attempts, secret-seeking queries,
+ * and other attempts to manipulate the LLM or extract sensitive information.
+ * The list is intentionally broad to catch variations of these attacks.
+ */
 const PROHIBITED_QUERY_PATTERNS = [
   /ignore\s+(?:all\s+)?previous/i,
   /disregard\s+(?:all\s+)?previous/i,
@@ -20,7 +27,16 @@ export type SafetyOptions = {
   logger?: Pick<Console, 'warn'> | false;
 };
 
-/** Validate an HTTPS URL and reject local/private network targets. URL hashes are stripped. */
+/**
+ * Validate an HTTPS URL and reject local/private network targets.
+ *
+ * Allows only HTTPS URLs, rejects embedded credentials, and blocks private
+ * IP ranges (including localhost, IPv4 private/reserved ranges, and link-local).
+ * URL hashes are stripped to prevent hash-based payload bypass.
+ *
+ * @param kind - Identifier for logging (e.g., 'webfetch', 'exa result')
+ * @throws AgentQueryCrawlError when URL fails any safety check
+ */
 export function validateSafeHttpsUrl(value: string, kind = 'webfetch', options: SafetyOptions = {}): string {
   const trimmed = value.trim();
   let parsed: URL;
@@ -42,7 +58,15 @@ export function validateSafeHttpsUrl(value: string, kind = 'webfetch', options: 
   return parsed.href;
 }
 
-/** Normalize a web search query and reject prompt-injection or secret-seeking phrases. */
+/**
+ * Normalize a web search query and reject prompt-injection or secret-seeking phrases.
+ *
+ * Normalizes whitespace and control characters, truncates to 500 characters,
+ * then checks against prohibited patterns. Throws if the query is empty after
+ * normalization or matches any injection/secret-seeking pattern.
+ *
+ * @throws AgentQueryCrawlError when query is empty or matches a prohibited pattern
+ */
 export function sanitizeSearchQuery(value: string, options: SafetyOptions = {}): string {
   const query = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500);
   const pattern = PROHIBITED_QUERY_PATTERNS.find((item) => item.test(query));
@@ -58,7 +82,17 @@ export function sanitizeSearchQuery(value: string, options: SafetyOptions = {}):
   return query;
 }
 
-/** Sanitize untrusted web text before handing it to an agent or model. */
+/**
+ * Sanitize untrusted web text before handing it to an agent or model.
+ *
+ * Removes control characters, strips markdown/HTML formatting characters,
+ * removes role-playing prefixes (system:, user:, etc.), and eliminates
+ * prompt injection phrases. Also removes potentially dangerous content like
+ * API keys, passwords, and tokens. Finally truncates to maxLength.
+ *
+ * This is a defense-in-depth measure - content should already be safe from
+ * the source, but this catches any edge cases that slip through.
+ */
 export function sanitizeUntrustedWebText(value: string, maxLength = 4000): string {
   return value
     .replace(/<\s*\//g, '<')

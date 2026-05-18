@@ -23,13 +23,25 @@ export type ExaSearchOptions = SafetyOptions & {
   proxyBaseUrl?: string;
 };
 
+/**
+ * Resolve the fetch implementation, preferring a custom one over the global.
+ *
+ * We bind globalThis.fetch to preserve the correct `this` context.
+ */
 function pickFetch(customFetch?: FetchLike): FetchLike {
   if (typeof customFetch === 'function') return customFetch;
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
   throw new AgentQueryCrawlError('network_unavailable', 'A fetch implementation is required.');
 }
 
-/** Create an Exa MCP search client. */
+/**
+ * Create an Exa MCP search client.
+ *
+ * Communicates with the Exa MCP server to perform web searches. The client
+ * sends a JSON-RPC request and parses Server-Sent Events from the response.
+ * Supports optional proxying via proxyBaseUrl for environments that cannot
+ * directly reach the Exa MCP endpoint.
+ */
 export function createExaSearch(options: ExaSearchOptions = {}) {
   const fetch = pickFetch(options.fetch);
   const endpoint = options.proxyBaseUrl ?? options.endpoint ?? EXA_MCP_URL;
@@ -97,7 +109,13 @@ export function buildExaMcpRequest(input: Omit<ExaSearchInput, 'signal' | 'timeo
   };
 }
 
-/** Parse Exa MCP Server-Sent Events and return the first text content payload. */
+/**
+ * Parse Exa MCP Server-Sent Events and return the first text content payload.
+ *
+ * Exa MCP responses are newline-delimited SSE where each line starts with
+ * "data: ". The payload is a JSON-RPC response containing a result object
+ * with a content array. We extract the first item with type "text".
+ */
 export function parseExaSse(body: string): string | undefined {
   for (const line of body.split('\n')) {
     if (!line.startsWith('data: ')) continue;
@@ -113,7 +131,13 @@ export function parseExaSse(body: string): string | undefined {
   return undefined;
 }
 
-/** Extract unique, safe HTTPS URLs from search or page text. */
+/**
+ * Extract unique, safe HTTPS URLs from search or page text.
+ *
+ * Uses a regex to find HTTP/HTTPS URLs, strips trailing punctuation, then
+ * validates each URL against safety rules (HTTPS only, no private IPs, etc.).
+ * Returns deduplicated URLs in the order they appear in the text.
+ */
 export function extractUrlsFromText(text: string, options: SafetyOptions = {}): string[] {
   if (!text) return [];
 

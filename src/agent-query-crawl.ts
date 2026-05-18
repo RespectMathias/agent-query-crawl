@@ -3,6 +3,8 @@ import { DEFAULT_LIMITS } from './limits';
 import { createWebFetch, type WebFetchOptions, type WebFetchResult } from './web-fetch';
 import { sanitizeSearchQuery, type SafetyOptions } from './web-safety';
 
+const DEFAULT_LIMIT = DEFAULT_LIMITS.defaultCrawlPages;
+
 export type AgentQueryCrawlInput = {
   query: string;
   /** Number of search results requested from Exa and default number of pages to crawl. */
@@ -29,7 +31,13 @@ export type AgentQueryCrawlOptions = SafetyOptions & {
   webFetch?: WebFetchOptions;
 };
 
-/** Create an agent-oriented internet query and crawl client. */
+/**
+ * Create an agent-oriented internet query and crawl client.
+ *
+ * Provides a unified interface for searching the web via Exa MCP and optionally
+ * crawling the returned URLs to retrieve their content. Both operations share
+ * safety validation and share a common fetch implementation when provided.
+ */
 export function createAgentQueryCrawl(options: AgentQueryCrawlOptions = {}) {
   const search = createExaSearch({ fetch: options.fetch, ...options.search, logger: options.logger });
   const webFetch = createWebFetch({ fetch: options.fetch, ...options.webFetch, logger: options.logger });
@@ -37,7 +45,7 @@ export function createAgentQueryCrawl(options: AgentQueryCrawlOptions = {}) {
   return {
     async query(input: AgentQueryCrawlInput): Promise<AgentQueryCrawlResult> {
       const query = sanitizeSearchQuery(input.query, options);
-      const limit = Math.max(1, input.limit ?? DEFAULT_LIMITS.defaultCrawlPages);
+      const limit = Math.max(1, input.limit ?? DEFAULT_LIMIT);
       const resultsText = await search.search({
         query,
         signal: input.signal,
@@ -59,6 +67,12 @@ export function createAgentQueryCrawl(options: AgentQueryCrawlOptions = {}) {
   };
 }
 
+/**
+ * Fetch multiple URLs concurrently, returning only successful results.
+ *
+ * Uses Promise.allSettled to continue fetching remaining URLs if some fail,
+ * ensuring partial results are returned rather than failing the entire batch.
+ */
 async function crawlUrls({
   urls,
   webFetch,
