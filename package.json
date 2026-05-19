@@ -1,9 +1,8 @@
 {
   "name": "agent-query-crawl",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Agent-oriented internet query, Exa search, and safe page crawling utilities.",
   "author": "respectmathias",
-  "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
